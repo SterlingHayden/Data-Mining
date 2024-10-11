@@ -1,0 +1,132 @@
+---
+title: "Clustering Lab"
+author: "Sterling Hayden"
+date: "2024-10-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(DataExplorer)
+```
+
+
+```{r}
+load("TeenSNS4.RData") 
+head(teens4)
+```
+
+
+```{r}
+#create_report(teens4)
+```
+
+
+```{r}
+df = teens4
+head(df)
+unique(df$gender)
+```
+
+
+# Clean up missing and factorize
+```{r}
+df$drunk <- as.factor(df$drunk)
+df$abercrombie <- as.factor(df$abercrombie)
+df$hollister <- as.factor(df$hollister)
+df$clothes <- as.factor(df$clothes)
+df$dress <- as.factor(df$dress)
+df$cheerleading <- as.factor(df$cheerleading)
+df$gender <- factor(df$gender, levels = c(levels(df$gender), "Missing"))
+df$gender <- replace(df$gender, is.na(df$gender), "Missing")
+sapply(df, class)
+```
+
+
+# Standardize
+```{r}
+##### DOESN'T WORK ########
+teens4Standard <- teens4 %>% 
+# Calculate rowsum across numeric variables
+mutate(totalRowSum = rowSums(across(where(is.numeric)))) %>% 
+# Divide all numeric variables by their rowsum
+mutate(across(where(is.numeric), ~ . / totalRowSum))
+```
+
+
+```{r}
+factor_columns <- c("gender", "cheerleading", "dress", "abercrombie", "hollister", "shopping", "drunk")
+
+# Use model.matrix to create dummy variables for the factors and bind them with numeric columns
+df_encoded <- lapply(factor_columns, function(col) {
+  model.matrix(~ get(col) - 1, data = df)  # Convert factor columns to dummies, remove intercept
+})
+
+# Step 2: Keep all numeric and integer columns, excluding the factors
+numeric_columns <- setdiff(names(df), factor_columns)
+df_numeric <- df[, numeric_columns]
+
+# Step 3: Bind the numeric columns and the encoded dummy variables
+df_combined <- cbind(df_numeric, df_encoded)
+
+# Step 4: Ensure all columns are numeric (just in case)
+df_combined[] <- lapply(df_combined, as.numeric)
+
+# Step 5: Standardize the data
+df_scaled <- scale(df_combined)
+```
+
+
+# PCA
+```{r}
+#perform PCA
+pca_result <- prcomp(df_scaled, center = TRUE, scale. = TRUE)
+
+#view PCA results
+summary(pca_result)
+#pca_result$rotation  # Eigenvectors (Principal components)
+#pca_result$x  # Principal component scores
+
+#plot the pca
+plot(data.frame(pca_result$x[,c(1:2)]))
+```
+
+
+# Clustering w/ K-Means
+```{r}
+library(factoextra)
+```
+
+```{r}
+fviz_nbclust(pca_result$x[,c(1:2)], kmeans, method = "silhouette",k.max = 4)
+```
+
+```{r}
+k3 <- kmeans(pca_result$x[,c(1:2)], centers = 3, nstart = 25)
+```
+
+```{r}
+k3
+```
+
+
+```{r}
+k3$tot.withinss
+```
+
+```{r}
+fviz_cluster(k3, data = pca_result$x[,c(1:2)])
+```
+
+
+```{r}
+df$cluster <- as.factor(k3$cluster)
+head(df)
+```
+
+
+```{r}
+df %>%
+  group_by(cluster) %>%
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = TRUE))) 
+```
